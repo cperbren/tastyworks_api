@@ -3,31 +3,39 @@ import datetime
 import logging
 
 import aiocometd
-import requests
 from aiocometd import ConnectionType
+from os import environ
 
 from tastyworks import dxfeed
 from tastyworks.dxfeed import mapper as dxfeed_mapper
 from tastyworks.models.session import TastyAPISession
 
+import tastyworks.tastyworks_api.tw_api as api
+
 LOGGER = logging.getLogger(__name__)
 
 
 class DataStreamer(object):
-    def __init__(self, session: TastyAPISession):
-        if not session.is_active():
-            raise Exception('TastyWorks API session not active/valid')
-        self.tasty_session = session
+    def __init__(self):
+        self.data = None
+        self.token = None
+        self.websocket_url = None
+        self.tasty_session = None
         self.cometd_client = None
+        self.data_created = None
         self.subs = {}
-        asyncio.get_event_loop().run_until_complete(
-            self._setup_connection()
-        )
 
-    def __del__(self):
-        asyncio.get_event_loop().run_until_complete(
-            self.cometd_client.close()
-        )
+    async def close(self):
+        await self.cometd_client.close()
+
+    @classmethod
+    async def start(cls, session: TastyAPISession):
+        self = DataStreamer()
+        self.tasty_session = session
+        if not await session.is_active():
+            await session.start(environ.get('TW_USER', ""), environ.get('TW_PASSWORD', ""))
+        await self._setup_connection()
+        return self
 
     async def _cometd_close(self):
         await self.cometd_client.close()
@@ -54,38 +62,36 @@ class DataStreamer(object):
         LOGGER.debug('Resetting data subscriptions')
         await self._send_msg(dxfeed.SUBSCRIPTION_CHANNEL, {'reset': True})
 
-    def get_streamer_token(self):
-        return self._get_streamer_data()['data']['token']
+    async def _get_streamer_data(self):
+        if hasattr(self, 'streamer_data_created') \
+                and (datetime.datetime.now() - self.data_created).total_seconds() < 60:
+            return self.data
 
-    def _get_streamer_data(self):
-        if not self.tasty_session.logged_in:
-            raise Exception('Logged in session required')
+        resp = await api.get_streamer_info(self.tasty_session.session_token)
 
-        if hasattr(self, 'streamer_data_created') and (datetime.datetime.now() - self.streamer_data_created).total_seconds() < 60:
-            return self.streamer_data
-
-        resp = requests.get(f'{self.tasty_session.API_url}/quote-streamer-tokens', headers=self.tasty_session.get_request_headers())
-        if resp.status_code != 200:
-            raise Exception('Could not get quote streamer data, error message: {}'.format(
-                resp.json()['error']['message']
-            ))
-        self.streamer_data = resp.json()
-        self.streamer_data_created = datetime.datetime.now()
-        return resp.json()
+        if resp.get('status') != 200:
+            self.error = resp.get("reason")
+            LOGGER.error(f'Could not get quote streamer data, error message: {resp.get("reason")}')
+        else:
+            self.data = resp.get('content').get('data')
+            self.websocket_url = self._get_streamer_websocket_url()
+            self.token = self.data.get('token')
+            self.data_created = datetime.datetime.now()
+        return resp
 
     def _get_streamer_websocket_url(self):
-        socket_url = self._get_streamer_data()['data']['websocket-url']
-        full_url = '{}/cometd'.format(socket_url)
-        return full_url
+        return f'{self.data.get("websocket-url")}/cometd'
 
     async def _setup_connection(self):
         aiocometd.client.DEFAULT_CONNECTION_TYPE = ConnectionType.WEBSOCKET
-        streamer_url = self._get_streamer_websocket_url()
-        LOGGER.info('Connecting to url: %s', streamer_url)
 
-        auth_extension = AuthExtension(self.get_streamer_token())
+        await self._get_streamer_data()
+
+        LOGGER.info('Connecting to url: %s', self.websocket_url)
+
+        auth_extension = AuthExtension(self.data.get('token'))
         cometd_client = aiocometd.Client(
-            streamer_url,
+            self.websocket_url,
             auth=auth_extension,
         )
         await cometd_client.open()
@@ -96,6 +102,8 @@ class DataStreamer(object):
         LOGGER.info('Connected and logged in to dxFeed data stream')
 
         await self.reset_data_subs()
+
+        return True
 
     async def listen(self):
         async for msg in self.cometd_client:

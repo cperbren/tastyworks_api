@@ -1,57 +1,80 @@
 import datetime
 import logging
 
-import requests
+import tastyworks.tastyworks_api.tw_api as api
 
 LOGGER = logging.getLogger(__name__)
 
 
 class TastyAPISession(object):
-    def __init__(self, username: str, password: str, API_url=None):
-        self.API_url = API_url if API_url else 'https://api.tastyworks.com'
-        self.username = username
-        self.password = password
+    def __init__(self):
+        self.api_url = None
         self.logged_in = False
-        self.session_token = self._get_session_token()
+        self.logged_in_at = None
+        self.session_token = None
 
-    def _get_session_token(self):
-        if self.logged_in and self.session_token:
-            if (datetime.datetime.now() - self.logged_in_at).total_seconds() < 60:
-                return self.session_token
+    @classmethod
+    async def start(cls, username: str = None, password: str = None):
+        self = TastyAPISession()
 
-        body = {
-            'login': self.username,
-            'password': self.password
-        }
-        resp = requests.post(f'{self.API_url}/sessions', json=body)
-        if resp.status_code != 201:
+        resp = await api.session_start(username, password)
+
+        if resp.get('status') == 201:
+            self.api_url = resp.get('url')
+            self.logged_in = True
+            self.logged_in_at = datetime.datetime.now()
+            self.session_token = resp.get('content').get('data').get('session-token')
+            await self._validate_session()
+            return self
+        else:
+            LOGGER.error(f'Failed to log in. Reason: {resp.get("reason")}')
+
+    async def is_active(self):
+        return await self._validate_session()
+
+    async def _validate_session(self):
+        resp = await api.session_validate(self.session_token)
+
+        if resp.get('status') == 201:
+            return True
+        else:
             self.logged_in = False
             self.logged_in_at = None
             self.session_token = None
-            raise Exception('Failed to log in, message: {}'.format(resp.json()['error']['message']))
-
-        self.logged_in = True
-        self.logged_in_at = datetime.datetime.now()
-        self.session_token = resp.json()['data']['session-token']
-        self._validate_session()
-        return self.session_token
-
-    def is_active(self):
-        return self._validate_session()
-
-    def _validate_session(self):
-        resp = requests.post(f'{self.API_url}/sessions/validate', headers=self.get_request_headers())
-        if resp.status_code != 201:
-            self.logged_in = False
-            self.logged_in_at = None
-            self.session_token = None
-            raise Exception('Could not validate the session, error message: {}'.format(
-                resp.json()['error']['message']
-            ))
+            LOGGER.error(f'Could not validate the session. Reason: {resp.get("reason")}')
             return False
-        return True
 
-    def get_request_headers(self):
-        return {
-            'Authorization': self.session_token
-        }
+    # def _get_session_token_v2(self):
+    #     self.logged_in = False
+    #     if self.logged_in and self.session_token:
+    #         if (datetime.datetime.now() - self.logged_in_at).total_seconds() < 60:
+    #             return self.session_token
+    #
+    #     loop = asyncio.new_event_loop()
+    #     resp = loop.run_until_complete(api.session_start(self.username, self.password))
+    #
+    #     if resp.get('status') == 201:
+    #         self.logged_in = True
+    #         self.logged_in_at = datetime.datetime.now()
+    #         self.session_token = resp.get('content').get('data').get('session-token')
+    #         self._validate_session_v2()
+    #         return self.session_token
+    #     else:
+    #         self.logged_in = False
+    #         self.logged_in_at = None
+    #         self.session_token = None
+    #         LOGGER.error(f'Failed to log in. Reason: {resp.get("reason")}')
+    #
+    # def _validate_session_v2(self):
+    #     loop = asyncio.new_event_loop()
+    #     resp = loop.run_until_complete(api.session_validate(self.session_token))
+    #
+    #     if resp.get('status') == 201:
+    #         return True
+    #     else:
+    #         self.logged_in = False
+    #         self.logged_in_at = None
+    #         self.session_token = None
+    #         LOGGER.error(f'Could not validate the session. Reason: {resp.get("reason")}')
+    #         return False
+    #

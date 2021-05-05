@@ -30,7 +30,7 @@ async def main_loop(session: TastyAPISession, streamer: DataStreamer):
     }
 
     accounts = await TradingAccount.get_remote_accounts(session)
-    acct = accounts[0]
+    acct = accounts[1]
     LOGGER.info('Accounts available: %s', accounts)
 
     orders = await Order.get_remote_orders(session, acct)
@@ -82,25 +82,23 @@ def get_third_friday(d):
     return candidate
 
 
-def main():
-    tasty_client = tasty_session.create_new_session(environ.get('TW_USER', ""), environ.get('TW_PASSWORD', ""))
+async def main():
 
-    streamer = DataStreamer(tasty_client)
-    LOGGER.info('Streamer token: %s' % streamer.get_streamer_token())
-    loop = asyncio.get_event_loop()
+    # Creating a new TW API session using async and the new API abstraction layer
+    tw_session = await TastyAPISession.start(environ.get('TW_USER', ""), environ.get('TW_PASSWORD', ""))
 
+    # Creating a new Data Streamer connection
+    streamer = await DataStreamer.start(tw_session)
+
+    # LOGGER.info('Streamer token: %s' % streamer.get_streamer_token())
     try:
-        loop.run_until_complete(main_loop(tasty_client, streamer))
-    except Exception:
-        LOGGER.exception('Exception in main loop')
+        await main_loop(tw_session, streamer)
     finally:
-        # find all futures/tasks still running and wait for them to finish
-        pending_tasks = [
-            task for task in asyncio.Task.all_tasks() if not task.done()
-        ]
-        loop.run_until_complete(asyncio.gather(*pending_tasks))
-        loop.close()
+        # This is not working
+        await streamer.close()
 
 
 if __name__ == '__main__':
-    main()
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(main())
+    loop.close()
