@@ -2,6 +2,7 @@ from typing import List
 
 import aiohttp
 from dataclasses import dataclass
+import tastyworks.tastyworks_api.tw_api as api
 
 from tastyworks.models.order import Order, OrderPriceEffect
 
@@ -27,25 +28,19 @@ class TradingAccount(object):
         if not order.check_is_order_executable():
             raise Exception('Order is not executable, most likely due to missing data')
 
-        if not session.is_active():
+        if not await session.is_active():
             raise Exception('The supplied session is not active and valid')
-
-        url = '{}/accounts/{}/orders'.format(
-            session.API_url,
-            self.account_number
-        )
-        if dry_run:
-            url = f'{url}/dry-run'
 
         body = _get_execute_order_json(order)
 
-        async with aiohttp.request('POST', url, headers=session.get_request_headers(), json=body) as resp:
-            if resp.status == 201:
-                return True
-            elif resp.status == 400:
-                raise Exception('Order execution failed, message: {}'.format(await resp.text()))
-            else:
-                raise Exception('Unknown remote error, status code: {}, message: {}'.format(resp.status, await resp.text()))
+        resp = await api.route_order(session.session_token, self.account_number, order_json=body, is_dry_run=dry_run)
+
+        if resp.get('status') == 201:
+            return True
+        elif resp.get('status') == 400:
+            raise Exception(f'Order execution failed, message: {resp.get("reason")}')
+        else:
+            raise Exception(f'Unknown remote error, status code: {resp.get("reason")}, message: {resp.get("reason")}')
 
     @classmethod
     def from_dict(cls, data: dict) -> List:

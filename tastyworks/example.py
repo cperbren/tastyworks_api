@@ -19,15 +19,6 @@ LOGGER = logging.getLogger(__name__)
 
 
 async def main_loop(session: TastyAPISession, streamer: DataStreamer):
-    # sub_values = {
-    #     "Greeks": [
-    #         ".VIX180718C21",
-    #         ".YUM180518C95"
-    #     ]
-    # }
-    sub_values = {
-        "Quote": ["/ES"]
-    }
 
     accounts = await TradingAccount.get_remote_accounts(session)
     acct = accounts[1]
@@ -45,10 +36,10 @@ async def main_loop(session: TastyAPISession, streamer: DataStreamer):
     new_order = Order(details)
 
     opt = Option(
-        ticker='AKS',
+        ticker='SPY',
         quantity=1,
         expiry=get_third_friday(date.today()),
-        strike=Decimal(3),
+        strike=Decimal(400),
         option_type=OptionType.CALL,
         underlying_type=UnderlyingType.EQUITY
     )
@@ -58,11 +49,14 @@ async def main_loop(session: TastyAPISession, streamer: DataStreamer):
     LOGGER.info('Order executed successfully: %s', res)
 
     # Get an options chain
-    undl = underlying.Underlying('AKS')
+    undl = underlying.Underlying('SPY')
 
     chain = await option_chain.get_option_chain(session, undl)
     LOGGER.info('Chain strikes: %s', chain.get_all_strikes())
 
+    sub_values = {
+        "Quote": ["/ES"]
+    }
     await streamer.add_data_sub(sub_values)
 
     async for item in streamer.listen():

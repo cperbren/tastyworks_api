@@ -155,12 +155,28 @@ async def api_request(request_type: str, url: str, token: str = None, json_data:
                 'url': str(resp.url),
                 'method': resp.method,
                 'content_length': resp.content_length,
-                'content_type': resp.content_type
+                'content_type': resp.content_type,
+                'host': resp.host
             }
         else:
             api_response = {}
 
     return api_response
+
+
+def deep_get(dictionary: dict, keys: list):
+    """
+    Look for the value of a key in a nested dictionary
+    Args:
+        dictionary: a (nested) dictionary that contains the keys to find
+        keys: a list of ordered keys to look into the nested dictionary
+
+    Returns:
+        The value for the last key in the key list
+    """
+    if not keys or dictionary is None:
+        return dictionary
+    return deep_get(dictionary.get(keys[0]), keys[1:])
 
 
 """
