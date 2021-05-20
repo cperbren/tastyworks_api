@@ -164,7 +164,7 @@ async def api_request(request_type: str, url: str, token: str = None, json_data:
     return api_response
 
 
-def deep_get(dictionary: dict, keys: list):
+def get_deep_value(dictionary: dict, keys: list):
     """
     Look for the value of a key in a nested dictionary
     Args:
@@ -176,7 +176,7 @@ def deep_get(dictionary: dict, keys: list):
     """
     if not keys or dictionary is None:
         return dictionary
-    return deep_get(dictionary.get(keys[0]), keys[1:])
+    return get_deep_value(dictionary.get(keys[0]), keys[1:])
 
 
 """
@@ -660,4 +660,3 @@ async def get_instruments_precisions(token: str) -> Dict:
     url = make_api_url('PRECISIONS')
     resp = await api_request('GET', url, token)
     return resp
-

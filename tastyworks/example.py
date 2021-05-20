@@ -19,40 +19,156 @@ LOGGER = logging.getLogger(__name__)
 
 
 async def main_loop(session: TastyAPISession, streamer: DataStreamer):
+    """
+        Example usage of classes and methods
+    """
 
-    accounts = await TradingAccount.get_remote_accounts(session)
-    acct = accounts[1]
+    """
+    #################
+    # ACCOUNT STUFF #
+    #################
+    """
+    # Getting account with 'owner' status >> YOU MAY NEED TO CHANGE THE ACCOUNT CHOICE BELOW
+    accounts = await TradingAccount.get_accounts(session)
+    acct = accounts[2]
     LOGGER.info('Accounts available: %s', accounts)
 
-    orders = await Order.get_remote_orders(session, acct)
-    LOGGER.info('Number of active orders: %s', len(orders))
+    # Getting an account balances
+    balances = await acct.get_balances(session)
+    LOGGER.info(f'Account balances: \n'
+                f'Cash Balance: ${balances.get("cash-balance")}\n'
+                f'Margin Equity: ${balances.get("margin-equity")}')
 
-    # Execute an order
+    # Get the status of an account
+    status = await acct.get_status(session)
+    LOGGER.info(f'Account status: \n'
+                f'Is it closed? {status.get("is-closed")}\n'
+                f'Options level: {status.get("options-level")}')
 
-    details = OrderDetails(
-        type=OrderType.LIMIT,
-        price=Decimal(400),
-        price_effect=OrderPriceEffect.CREDIT)
-    new_order = Order(details)
+    # Get the margin/capital requirements of an account
+    # Also a way to getting all the current positions, orders, legs, etc. in the account with extra details
+    capital = await acct.get_capital_req(session)
+    LOGGER.info(f'Account capital requirements: \n'
+                f'Margin requirement: ${capital.get("margin-requirement")}\n'
+                f'Option buying power: ${capital.get("reg-t-option-buying-power")}')
 
-    opt = Option(
-        ticker='SPY',
-        quantity=1,
-        expiry=get_third_friday(date.today()),
-        strike=Decimal(400),
-        option_type=OptionType.CALL,
-        underlying_type=UnderlyingType.EQUITY
-    )
-    new_order.add_leg(opt)
+    underlyings = await acct.get_underlyings(session)
+    LOGGER.info(f'Account holding details: \n'
+                f'Underlyings list: {[underlyings[n].get("code") for n in range(len(underlyings))]}\n'
+                f'Open Orders IDs: ${[underlyings[n].get("order-ids") for n in range(len(underlyings))]}')
 
-    res = await acct.execute_order(new_order, session, dry_run=True)
-    LOGGER.info('Order executed successfully: %s', res)
+    # Get all the open positions for an account
+    positions = await acct.get_positions(session)
+    LOGGER.info('Number of active positions: %s', len(positions))
 
-    # Get an options chain
-    undl = underlying.Underlying('SPY')
+    # Get the open and past orders (default last 200 orders) - See details for sorting and pagination
+    orders = await acct.get_orders(session)
+    LOGGER.info(f'Number of past orders retrieved: {len(orders)}')
 
-    chain = await option_chain.get_option_chain(session, undl)
-    LOGGER.info('Chain strikes: %s', chain.get_all_strikes())
+    # Get all the live orders (today's orders)
+    orders_live = await acct.get_orders_live(session)
+    LOGGER.info(f'Number of active orders: {len(orders_live)}')
+
+    # Get past transactions (default last 2000 transactions) - See details for sorting and pagination
+    transactions = await acct.get_transactions(session)
+    LOGGER.info(f'Number of past transactions: {len(transactions)}')
+
+    # Get all the accounts information at once [includes 200 orders & 2000 transactions]
+    await acct.get_everything(session)
+    LOGGER.info(f'Number of past transactions: {len(acct.transactions)}')
+
+    """
+    ##############
+    # WATCHLISTS #
+    ##############
+    """
+
+    # TODO: Update the Watchlist class
+
+    """
+    ###########
+    # JOURNAL #
+    ###########
+    """
+
+    # TODO: Need to create a Journal (maybe) and/or JournalEntry classes
+
+    """
+    ##################
+    # READING ORDERS #
+    ##################
+    """
+
+    # TODO
+    symbol = 'SPY'
+    start_date = date.today() - timedelta(days=90)
+    end_date = date.today()
+    orders = await acct.get_orders(session, symbol=symbol, start_date=start_date, end_date=end_date)
+    LOGGER.info(f'Number of active orders: {len(orders)}')
+    LOGGER.info(f'All active orders past 3 months for SPY: {[n for n in range(len(orders))]}')
+
+    """
+    ##################
+    # ROUTING ORDERS #
+    ##################
+    """
+
+    # TODO
+
+    """
+    ################
+    # TRANSACTIONS #
+    ################
+    """
+
+    # TODO
+
+    """
+    ################
+    # TRADING DATA #
+    ################
+    """
+
+    # TODO
+
+    """
+    ##########
+    # ALERTS #
+    ##########
+    """
+
+    # TODO
+
+
+
+
+    #
+    # # Execute an order
+    #
+    # details = OrderDetails(
+    #     type=OrderType.LIMIT,
+    #     price=Decimal(400),
+    #     price_effect=OrderPriceEffect.CREDIT)
+    # new_order = Order(details)
+    #
+    # opt = Option(
+    #     ticker='SPY',
+    #     quantity=1,
+    #     expiry=get_third_friday(date.today()),
+    #     strike=Decimal(400),
+    #     option_type=OptionType.CALL,
+    #     underlying_type=UnderlyingType.EQUITY
+    # )
+    # new_order.add_leg(opt)
+    #
+    # res = await acct.execute_order(new_order, session, dry_run=True)
+    # LOGGER.info('Order executed successfully: %s', res)
+    #
+    # # Get an options chain
+    # undl = underlying.Underlying('SPY')
+    #
+    # chain = await option_chain.get_option_chain(session, undl)
+    # LOGGER.info('Chain strikes: %s', chain.get_all_strikes())
 
     sub_values = {
         "Quote": ["/ES"]

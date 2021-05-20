@@ -1,6 +1,6 @@
 from typing import List
 
-import aiohttp
+from datetime import date
 from dataclasses import dataclass
 import tastyworks.tastyworks_api.tw_api as api
 
@@ -10,8 +10,40 @@ from tastyworks.models.order import Order, OrderPriceEffect
 @dataclass
 class TradingAccount(object):
     account_number: str
-    external_id: str
-    is_margin: bool
+    details: dict = None
+    balances: dict = None
+    status: dict = None
+    capital_req: dict = None
+    underlyings: list = None
+    positions: list = None
+    orders: list = None
+    orders_live: list = None
+    transactions: list = None
+
+    @classmethod
+    async def get_accounts(cls, session) -> List:
+        """
+        Gets all trading accounts from the Tastyworks platform from an active session.
+
+        Args:
+            session (TastyAPISession): An active and logged-in session object against which to query.
+
+        Returns:
+            list (TradingAccount): A list of trading accounts.
+        """
+        res = []
+        response = await api.get_accounts(session.session_token)
+
+        data = api.get_deep_value(response, ['content', 'data', 'items'])
+
+        for entry in data:
+            # if entry.get('authority-level') != 'owner':
+            #     continue
+            acct_data = entry.get('account')
+            acct = TradingAccount._parse_from_api(acct_data)
+            res.append(acct)
+
+        return res
 
     async def execute_order(self, order: Order, session, dry_run=True):
         """
@@ -43,133 +75,143 @@ class TradingAccount(object):
             raise Exception(f'Unknown remote error, status code: {resp.get("reason")}, message: {resp.get("reason")}')
 
     @classmethod
-    def from_dict(cls, data: dict) -> List:
+    def _parse_from_api(cls, data: dict):
         """
-        Parses a TradingAccount object from a dict.
+        Parses a TradingAccount object from an API dict response.
         """
         new_data = {
-            'is_margin': True if data['margin-or-cash'] == 'Margin' else False,
-            'account_number': data['account-number'],
-            'external_id': data['external-id']
+            'account_number': data.get('account-number'),
+            'details': data
         }
 
         res = TradingAccount(**new_data)
 
         return res
 
-    @classmethod
-    async def get_remote_accounts(cls, session) -> List:
+    async def get_everything(self, session):
         """
-        Gets all trading accounts from the Tastyworks platform.
+        Get all the account information at once using default counts for orders (200) & transactions (2000).
+        """
+        await self.get_balances(session)
+        await self.get_status(session)
+        await self.get_capital_req(session)
+        await self.get_underlyings(session)
+        await self.get_positions(session)
+        self.orders = await self.get_orders(session)
+        self.orders_live = await self.get_orders_live(session)
+        self.transactions = await self.get_transactions(session)
+
+        return True
+
+    async def get_balances(self, session):
+        """
+        Get account balances.
 
         Args:
             session (TastyAPISession): An active and logged-in session object against which to query.
-
-        Returns:
-            list (TradingAccount): A list of trading accounts.
-        """
-        url = f'{session.API_url}/customers/me/accounts'
-        res = []
-
-        async with aiohttp.request('GET', url, headers=session.get_request_headers()) as response:
-            if response.status != 200:
-                raise Exception('Could not get trading accounts info from Tastyworks...')
-            data = (await response.json())['data']
-
-        for entry in data['items']:
-            if entry['authority-level'] != 'owner':
-                continue
-            acct_data = entry['account']
-            acct = TradingAccount.from_dict(acct_data)
-            res.append(acct)
-
-        return res
-
-    async def get_balance(self, session, account):
-        """
-        Get balance.
-
-        Args:
-            session (TastyAPISession): An active and logged-in session object against which to query.
-            account (TradingAccount): The account_id to get balance on.
         Returns:
             dict: account attributes
         """
-        url = '{}/accounts/{}/balances'.format(
-            session.API_url,
-            account.account_number
-        )
+        response = await api.get_balances(session.session_token, self.account_number)
 
-        async with aiohttp.request('GET', url, headers=session.get_request_headers()) as response:
-            if response.status != 200:
-                raise Exception('Could not get trading account balance info from Tastyworks...')
-            data = (await response.json())['data']
-        return data
+        self.balances = api.get_deep_value(response, ['content', 'data'])
 
-    async def get_positions(self, session, account):
+        return self.balances
+
+    async def get_status(self, session):
+        """
+        Get the status of the account
+        """
+        response = await api.get_status(session.session_token, self.account_number)
+
+        self.status = api.get_deep_value(response, ['content', 'data'])
+
+        return self.status
+
+    async def get_capital_req(self, session):
+        """
+        Get the capital requirement of the account
+        """
+        response = await api.get_capital_req(session.session_token, self.account_number)
+
+        self.capital_req = api.get_deep_value(response, ['content', 'data'])
+
+        return self.capital_req
+
+    async def get_underlyings(self, session):
+        """
+        Get the active underlyings of an account
+        """
+        response = await api.get_capital_req(session.session_token, self.account_number)
+
+        self.underlyings = api.get_deep_value(response, ['content', 'data', 'underlyings'])
+        # TODO: Use an "Underlying" class?
+
+        return self.underlyings
+
+    async def get_positions(self, session):
         """
         Get Open Positions.
+        """
+        response = await api.get_positions(session.session_token, self.account_number)
+
+        self.positions = api.get_deep_value(response, ['content', 'data', 'items'])
+        # TODO: Use a "Position" class
+
+        return self.positions
+
+    async def get_orders(self, session, symbol: str = '',
+                         start_date: date = None, end_date: date = None,
+                         per_page: int = 200, page_number: int = 1):
+        """
+        Get all orders current and past with optional pagination.
 
         Args:
             session (TastyAPISession): An active and logged-in session object against which to query.
-            account (TradingAccount): The account_id to get positions on.
+            symbol
+            start_date
+            end_date
+            per_page
+            page_number
         Returns:
-            dict: account attributes
+            A list of orders matching the sorting criteria
         """
-        url = '{}/accounts/{}/positions'.format(
-            session.API_url,
-            account.account_number
-        )
+        response = await api.get_orders(session.session_token, self.account_number, symbol=symbol,
+                                        start_date=start_date, end_date=end_date,
+                                        per_page=per_page, page_number=page_number)
+        # TODO: Use the Order class
+        orders = api.get_deep_value(response, ['content', 'data', 'items'])
 
-        async with aiohttp.request('GET', url, headers=session.get_request_headers()) as response:
-            if response.status != 200:
-                raise Exception('Could not get open positions info from Tastyworks...')
-            data = (await response.json())['data']['items']
-        return data
+        return orders
 
-    async def get_live_orders(self, session, account):
+    async def get_orders_live(self, session):
         """
-        Get live Orders.
-
-        Args:
-            session (TastyAPISession): An active and logged-in session object against which to query.
-            account (TradingAccount): The account_id to get live orders on.
-        Returns:
-            dict: account attributes
+        Get live open orders.
         """
-        url = '{}/accounts/{}/orders/live'.format(
-            session.API_url,
-            account.account_number
-        )
+        response = await api.get_orders_live(session.session_token, self.account_number)
 
-        async with aiohttp.request('GET', url, headers=session.get_request_headers()) as response:
-            if response.status != 200:
-                raise Exception('Could not get live orders info from Tastyworks...')
-            data = (await response.json())['data']['items']
-        return data
+        self.orders_live = api.get_deep_value(response, ['content', 'data', 'items'])
+        # TODO: Use the Order class
 
-    async def get_history(self, session, account):
+        return self.orders_live
+
+    async def get_transactions(self, session, symbol: str = '',
+                               start_date: date = None, end_date: date = None,
+                               per_page: int = 2000, page_number: int = 1):
         """
-        Get live Orders.
-
-        Args:
-            session (TastyAPISession): An active and logged-in session object against which to query.
-            account (TradingAccount): The account_id to get history on.
-        Returns:
-            dict: account attributes
+        Get past transactions.
         """
-        url = '{}/accounts/{}/transactions'.format(
-            session.API_url,
-            account.account_number
-        )
+        response = await api.get_transactions(session.session_token, self.account_number, symbol=symbol,
+                                              start_date=start_date, end_date=end_date,
+                                              per_page=per_page, page_number=page_number)
 
-        async with aiohttp.request('GET', url, headers=session.get_request_headers()) as response:
-            if response.status != 200:
-                raise Exception('Could not get history info from Tastyworks...')
-            data = (await response.json())['data']
-        return data
+        transactions = api.get_deep_value(response, ['content', 'data', 'items'])
+        # TODO: Use a Transaction class (to be added)
+
+        return transactions
 
 
+# TODO: MOVE THIS SOMEWHERE ELSE BETTER ?
 def _get_execute_order_json(order: Order):
     order_json = {
         'source': order.details.source,
@@ -186,6 +228,7 @@ def _get_execute_order_json(order: Order):
     return order_json
 
 
+# TODO: MOVE THIS SOMEWHERE ELSE BETTER ?
 def _get_legs_request_data(order):
     res = []
     order_effect = order.details.price_effect

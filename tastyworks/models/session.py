@@ -7,8 +7,10 @@ LOGGER = logging.getLogger(__name__)
 
 
 class TastyAPISession(object):
-    def __init__(self):
-        self.API_url = None
+    def __init__(self, username: str = None, password: str = None, API_url = None):
+        # self.API_url = API_url if API_url else 'https://api.tastyworks.com'
+        # self.username = username
+        # self.password = password
         self.logged_in = False
         self.logged_in_at = None
         self.session_token = None
@@ -23,7 +25,7 @@ class TastyAPISession(object):
             self.API_url = 'https://'+resp.get('host')
             self.logged_in = True
             self.logged_in_at = datetime.datetime.now()
-            self.session_token = api.deep_get(resp, ['content', 'data', 'session-token'])
+            self.session_token = api.get_deep_value(resp, ['content', 'data', 'session-token'])
             await self._validate_session()
             return self
         else:
