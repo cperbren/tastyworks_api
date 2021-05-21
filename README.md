@@ -12,16 +12,16 @@ Please note that this is in the very early stages of development so any and all 
 
 ## Installation
 ```
-pip install tastyworks
+N/A
 ```
 ✨ 🍰
 
 Since it's an async-based API, please make sure you're familiar with how asynchronous python works (Note: Python 3.6 or higher).
 
-An example use is provided in `example.py` in the `tastyworks` folder. See for yourself by adding your tastyworks username/password and running:
+An example use is provided in `example.py` in the `tastyworks` folder. See for yourself by adding your tastyworks username/password in your environment variables and running the example.
 
 ```
-tasty 
+example.py
 ```
 
 ## Guidelines and caveats
