@@ -7,10 +7,9 @@ from decimal import Decimal
 
 from tastyworks.models import option_chain, underlying
 from tastyworks.models.option import Option, OptionType
-from tastyworks.models.order import (Order, OrderDetails, OrderPriceEffect,
-                                     OrderType)
+from tastyworks.models.order import (Order, OrderDetails, OrderPriceEffect,OrderType)
 from tastyworks.models.session import TastyAPISession
-from tastyworks.models.trading_account import TradingAccount
+from tastyworks.models.account import TradingAccount
 from tastyworks.models.underlying import UnderlyingType
 from tastyworks.streamer import DataStreamer
 from tastyworks.tastyworks_api import tasty_session
@@ -99,13 +98,13 @@ async def main_loop(session: TastyAPISession, streamer: DataStreamer):
     ##################
     """
 
-    # TODO
+    # Similar to the account section, here you can fetch orders with extra filters
     symbol = 'SPY'
-    start_date = date.today() - timedelta(days=90)
+    start_date = date.today() - timedelta(days=90)  # last 90 days
     end_date = date.today()
-    orders = await acct.get_orders(session, symbol=symbol, start_date=start_date, end_date=end_date)
-    LOGGER.info(f'Number of active orders: {len(orders)}')
-    LOGGER.info(f'All active orders past 3 months for SPY: {[n for n in range(len(orders))]}')
+    orders = await acct.get_orders(session, symbol=symbol, start_date=start_date, end_date=end_date,
+                                   per_page=10, page_number=1)
+    LOGGER.info(f'Last 10 active orders for the past 90 days for SPY: {[orders[n] for n in range(len(orders))]}')
 
     """
     ##################

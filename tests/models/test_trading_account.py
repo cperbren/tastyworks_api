@@ -2,7 +2,7 @@ import datetime
 import unittest
 from decimal import Decimal
 
-from tastyworks.models import option, order, underlying, trading_account
+from tastyworks.models import option, order, underlying, account
 
 GTC_DATE = '2019-02-12'
 
@@ -31,7 +31,7 @@ def build_default_order(time_in_force=order.TimeInForce.DAY):
 class TestTradingAccount(unittest.TestCase):
     def test_get_execute_order_json(self):
         test_order = build_default_order()
-        res = trading_account._get_execute_order_json(test_order)
+        res = account._get_execute_order_json(test_order)
         expected_result = {
             'source': 'WBT',
             'order-type': 'Limit',
@@ -52,7 +52,7 @@ class TestTradingAccount(unittest.TestCase):
 
     def test_get_execute_order_json_when_gtd(self):
         test_order = build_default_order(order.TimeInForce.GTD)
-        res = trading_account._get_execute_order_json(test_order)
+        res = account._get_execute_order_json(test_order)
         expected_result = {
             'source': 'WBT',
             'order-type': 'Limit',
