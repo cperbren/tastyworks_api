@@ -9,7 +9,7 @@ from tastyworks.models import option_chain, underlying
 from tastyworks.models.option import Option, OptionType
 from tastyworks.models.order import (Order, OrderDetails, OrderPriceEffect,OrderType)
 from tastyworks.models.session import TastyAPISession
-from tastyworks.models.account import TradingAccount
+from tastyworks.models.account import Account
 from tastyworks.models.underlying import UnderlyingType
 from tastyworks.streamer import DataStreamer
 from tastyworks.tastyworks_api import tasty_session
@@ -28,7 +28,7 @@ async def main_loop(session: TastyAPISession, streamer: DataStreamer):
     #################
     """
     # Getting account with 'owner' status >> YOU MAY NEED TO CHANGE THE ACCOUNT CHOICE BELOW
-    accounts = await TradingAccount.get_accounts(session)
+    accounts = await Account.get_accounts(session)
     acct = accounts[2]
     LOGGER.info('Accounts available: %s', accounts)
 
@@ -170,7 +170,7 @@ async def main_loop(session: TastyAPISession, streamer: DataStreamer):
     # LOGGER.info('Chain strikes: %s', chain.get_all_strikes())
 
     sub_values = {
-        "Quote": ["/ES"]
+        'Quote': ['SPY']
     }
     await streamer.add_data_sub(sub_values)
 

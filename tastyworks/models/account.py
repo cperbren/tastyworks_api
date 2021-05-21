@@ -4,11 +4,12 @@ from datetime import date
 from dataclasses import dataclass
 import tastyworks.tastyworks_api.tw_api as api
 
+from tastyworks.models.transaction import Transaction
 from tastyworks.models.order import Order, OrderPriceEffect
 
 
 @dataclass
-class TradingAccount(object):
+class Account(object):
     account_number: str
     details: dict = None
     balances: dict = None
@@ -40,7 +41,7 @@ class TradingAccount(object):
             # if entry.get('authority-level') != 'owner':
             #     continue
             acct_data = entry.get('account')
-            acct = TradingAccount._parse_from_api(acct_data)
+            acct = Account._parse_from_api(acct_data)
             res.append(acct)
 
         return res
@@ -84,7 +85,7 @@ class TradingAccount(object):
             'details': data
         }
 
-        res = TradingAccount(**new_data)
+        res = Account(**new_data)
 
         return res
 
@@ -174,7 +175,8 @@ class TradingAccount(object):
             per_page
             page_number
         Returns:
-            A list of orders matching the sorting criteria
+            A list of orders matching the sorting criteria. Not assigning to the class instance
+            to prevent overwriting of user data
         """
         response = await api.get_orders(session.session_token, self.account_number, symbol=symbol,
                                         start_date=start_date, end_date=end_date,
@@ -197,16 +199,20 @@ class TradingAccount(object):
 
     async def get_transactions(self, session, symbol: str = '',
                                start_date: date = None, end_date: date = None,
-                               per_page: int = 2000, page_number: int = 1):
+                               per_page: int = 2000, page_number: int = 1) -> List:
         """
-        Get past transactions.
+        Get past transactions. Not assigning to the class instance to prevent overwriting of user data
         """
         response = await api.get_transactions(session.session_token, self.account_number, symbol=symbol,
                                               start_date=start_date, end_date=end_date,
                                               per_page=per_page, page_number=page_number)
 
-        transactions = api.get_deep_value(response, ['content', 'data', 'items'])
-        # TODO: Use a Transaction class (to be added)
+        items = api.get_deep_value(response, ['content', 'data', 'items'])
+
+        transactions = []
+        for entry in items:
+            transaction = await Transaction.parse_from_api(entry)
+            transactions.append(transaction)
 
         return transactions
 
