@@ -1,3 +1,8 @@
+## ****************
+## Update
+This is an updated version from the original API, including all currently available API calls.
+## ****************
+
 # Tastyworks (Unofficial) API
 
 ## Disclaimer

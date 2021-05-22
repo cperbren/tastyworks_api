@@ -60,6 +60,4 @@ class Transaction(object):
                     Decimal(tr.get('commission') if tr.get('commission') else 0)
         }
 
-        res = cls(**new_data)
-
-        return res
+        return cls(**new_data)
