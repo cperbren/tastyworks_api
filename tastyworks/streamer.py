@@ -69,8 +69,8 @@ class DataStreamer(object):
 
         resp = await api.get_streamer_info(self.tasty_session.session_token)
 
-        if api.get_deep_value(resp, ['response', 'status']) != 200:
-            self.error = api.get_deep_value(resp, ['response', 'reason'])
+        if api.get_deep_value(resp, ['status', 'code']) != 200:
+            self.error = api.get_deep_value(resp, ['status', 'reason'])
             LOGGER.error(f'Could not get quote streamer data, error message: {self.error}')
         else:
             self.data = resp.get('content').get('data')
