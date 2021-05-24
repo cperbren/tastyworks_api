@@ -149,14 +149,17 @@ async def api_request(request_type: str, url: str, token: str = None, json_data:
         if resp:
             api_response = {
                 'content': 'OK' if (resp.status in [202, 204]) else await resp.json(),  # 202/204 not returning any data
-                'ok': resp.ok,
-                'status': resp.status,
-                'reason': resp.reason,
-                'url': str(resp.url),
-                'method': resp.method,
-                'content_length': resp.content_length,
-                'content_type': resp.content_type,
-                'host': resp.host
+                'response': {
+                    'ok': resp.ok,
+                    'status': resp.status,
+                    'reason': resp.reason,
+                    'url': str(resp.url),
+                    'method': resp.method,
+                    'content_length': resp.content_length,
+                    'content_type': resp.content_type,
+                    'host': resp.host,
+                    'request_info': resp.request_info
+                }
             }
         else:
             api_response = {}
