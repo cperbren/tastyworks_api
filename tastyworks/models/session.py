@@ -21,15 +21,15 @@ class TastyAPISession(object):
 
         resp = await api.session_start(username, password)
 
-        if resp.get('status') == 201:
-            self.API_url = 'https://'+resp.get('host')
+        if api.get_deep_value(resp, ['response', 'status']) == 201:
+            self.API_url = 'https://'+api.get_deep_value(resp, ['response', 'host'])
             self.logged_in = True
             self.logged_in_at = datetime.datetime.now()
             self.session_token = api.get_deep_value(resp, ['content', 'data', 'session-token'])
             await self._validate_session()
             return self
         else:
-            LOGGER.error(f'Failed to log in. Reason: {resp.get("reason")}')
+            LOGGER.error(f'Failed to log in. Reason: {api.get_deep_value(resp, ["response", "reason"])}')
 
     async def is_active(self):
         return await self._validate_session()
@@ -37,13 +37,13 @@ class TastyAPISession(object):
     async def _validate_session(self):
         resp = await api.session_validate(self.session_token)
 
-        if resp.get('status') == 201:
+        if api.get_deep_value(resp, ['response', 'status']) == 201:
             return True
         else:
             self.logged_in = False
             self.logged_in_at = None
             self.session_token = None
-            LOGGER.error(f'Could not validate the session. Reason: {resp.get("reason")}')
+            LOGGER.error(f'Could not validate the session. Reason: {api.get_deep_value(resp, ["response", "reason"])}')
             return False
 
     def get_request_headers(self):
