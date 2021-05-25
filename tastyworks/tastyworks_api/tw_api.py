@@ -1,3 +1,4 @@
+import logging
 import aiohttp
 import inspect
 
@@ -6,6 +7,8 @@ from datetime import date
 from urllib.parse import quote
 from typing import Dict
 from dataclasses import dataclass
+
+LOGGER = logging.getLogger(__name__)
 
 
 @dataclass
@@ -22,7 +25,7 @@ async def is_error(resp, valid_list: list = None, error_list: list = None):
         error_list = []
 
     if resp.status not in valid_list or resp.status in error_list:
-        print(
+        LOGGER.error(
             f'###################################################\n'
             f'API returned an error for: {resp.request_info.url}\n'
             f'Called from: {inspect.stack()[2].function}\n'
@@ -67,10 +70,10 @@ def make_api_url(key: str, **kwargs):
 
     if per_page:
         if key == 'TRANSACTIONS' and per_page > 2000:  # Transactions are limited to 2000
-            print('Limited to 2000 items per page for transactions. Setting at 2000 per page.')
+            LOGGER.warning('Limited to 2000 items per page for transactions. Setting at 2000 per page.')
             per_page = 2000
         if key == 'ORDERS' and per_page > 200:  # Orders are limited to 200
-            print('Limited to 200 items per page for orders. Setting at 200 per page.')
+            LOGGER.warning('Limited to 200 items per page for orders. Setting at 200 per page.')
             per_page = 200
 
     root = 'https://api.tastyworks.com'
@@ -142,9 +145,7 @@ async def api_request(request_type: str, url: str, token: str = None, json_data:
     Returns:
         The server response
     """
-    print(f'##########\n'
-          f'Running: {inspect.stack()[1].function}\n'
-          f'##########')
+    LOGGER.debug(f'########## Running: {inspect.stack()[1].function}')
 
     if token is not None:
         header = {'Authorization': token}
