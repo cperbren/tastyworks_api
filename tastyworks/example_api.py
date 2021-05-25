@@ -338,7 +338,7 @@ async def main():
     resp = await api.route_order(session_token, environ.get('TW_ACCOUNT', ""), order_json, is_dry_run=False)
     print(resp)
     order_id = None
-    if resp.get('ok'):
+    if resp.get('status').get('ok'):
         order_id = int(resp.get('content').get('data').get('order').get('id'))
 
     # Getting the live orders to check if the order was accepted and is working (not rejected)
@@ -358,7 +358,7 @@ async def main():
 
     # Editing an order is also done via 'route_order' but it includes an order ID and a shortened JSON dictionary
     # Running this if the above order is Live and can be edited (seems to happen sometimes with the high price)
-    if exist and status == 'Live' and is_editable:
+    if exist and status in ['Live', 'Received'] and is_editable:
         edited_order_json = {
             'source': 'WBT',
             'order-type': 'Limit',
@@ -385,7 +385,7 @@ async def main():
             is_cancellable = order.get('cancellable')
 
     # Cancelling an order using its 'order-id' if it has been accepted and is working
-    if exist and status == 'Live' and is_cancellable:
+    if exist and status in ['Live', 'Received'] and is_cancellable:
         resp = await api.cancel_order(session_token, environ.get('TW_ACCOUNT', ""), order_id=order_id)
         print(resp)
 
