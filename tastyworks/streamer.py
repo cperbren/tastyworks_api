@@ -1,10 +1,8 @@
-import asyncio
 import datetime
 import logging
 
 import aiocometd
 from aiocometd import ConnectionType
-from os import environ
 
 from tastyworks import dxfeed
 from tastyworks.dxfeed import mapper as dxfeed_mapper
@@ -33,7 +31,7 @@ class DataStreamer(object):
         self = DataStreamer()
         self.tasty_session = session
         if not await session.is_active():
-            await session.start(environ.get('TW_USER', ""), environ.get('TW_PASSWORD', ""))
+            await session.start()
         await self._setup_connection()
         return self
 

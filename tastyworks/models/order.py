@@ -1,4 +1,5 @@
 import logging
+import asyncio
 from datetime import datetime, timezone
 from decimal import Decimal
 from enum import Enum
@@ -7,8 +8,7 @@ from dataclasses import dataclass, field
 
 import tastyworks.tastyworks_api.tw_api as api
 from tastyworks.models.session import TastyAPISession
-from tastyworks.tastyworks_api.errors import OrderError, OrderWarning
-
+from tastyworks.tastyworks_api.messages import OrderError, OrderWarning
 
 LOGGER = logging.getLogger(__name__)
 
@@ -35,10 +35,12 @@ class OrderStatus(Enum):
     ROUTED = 'Routed'
     RECEIVED = 'Received'
     CANCELLED = 'Cancelled'
+    CANCEL_REQ = 'Cancel Requested'
     FILLED = 'Filled'
     EXPIRED = 'Expired'
     LIVE = 'Live'
     REJECTED = 'Rejected'
+    CONTINGENT = 'Contingent'
 
     def is_active(self):
         return self in (OrderStatus.LIVE, OrderStatus.RECEIVED)
@@ -133,6 +135,7 @@ class Order(object):
     price_effect: OrderPriceEffect = None
     stop_trigger: Decimal = None
     status: OrderStatus = None
+    contingent_status: str = None
     size: Decimal = None
     gtc_date: datetime = None
     underlying_symbol: str = None
@@ -151,9 +154,6 @@ class Order(object):
     warnings: list = None
     errors: dict = None
     is_dry_run: bool = None
-
-    # Raw data from the API
-    # details: dict = None
 
     @classmethod
     async def parse_from_api(cls, data: dict):
@@ -178,6 +178,7 @@ class Order(object):
             'price': Decimal(order.get('price')) if order.get('price') else None,
             'price_effect': OrderPriceEffect(order.get('price-effect')) if order.get('price-effect') else None,
             'status': OrderStatus(order.get('status')),
+            'contingent_status': order.get('contingent-status') if order.get('contingent-status') else None,
             'cancellable': order.get('cancellable'),
             'cancelled_at': datetime.fromisoformat(order.get('cancelled-at')) if order.get('cancelled-at') else None,
             'editable': order.get('editable'),
@@ -188,9 +189,6 @@ class Order(object):
             'terminal_at': datetime.fromisoformat(order.get('terminal-at')) if order.get('terminal-at') else None,
 
             'legs': [await Leg.parse_from_order(leg) for leg in order.get('legs')],
-
-            # Raw data from the API
-            # 'details': order,
         }
 
         if is_routed:
@@ -206,6 +204,7 @@ class Order(object):
         return cls(**new_data)
 
     async def to_order_json(self):
+        """ Create the json structure needed to send to the API. """
         order_json = {
             'order-type': self.type.value,
             'source': self.source,
@@ -221,7 +220,7 @@ class Order(object):
         if self.type in [OrderType.STOP_LIMIT, OrderType.STOP_MARKET]:
             order_json['stop-trigger'] = self.stop_trigger
 
-        # TODO: Check if all the cases are covered here
+        # TODO: Check if all the cases are covered here and check for correct value types?
 
         return order_json
 
@@ -244,86 +243,66 @@ class Order(object):
             len(self.legs) != 0
         ]
 
-        if not all(required_data):
-            return False
-
         if self.type is not OrderType.MARKET:
             required_data.append([self.price, self.price_effect])
 
-        if not all(required_data):
-            return False
-
-        if self.type is OrderType.STOP_LIMIT:
+        if self.type in [OrderType.STOP_LIMIT, OrderType.STOP_MARKET]:
             required_data.append(self.stop_trigger)
 
+        if self.time_in_force is TimeInForce.GTD:
+            required_data.append(self.gtc_date)
+
         if not all(required_data):
             return False
+        else:
+            return True
 
-    #     if self.time_in_force == TimeInForce.GTD:
-    #         try:
-    #             datetime.strptime(self.gtc_date, '%Y-%m-%d')
-    #         except ValueError:
-    #             return False
+    async def route(self, session: TastyAPISession, is_dry_run: bool = True):
+        """ Route a dry-run or a real order. Update the order instance with new data from the response. """
 
-        return True
-
-    async def dry_run(self, session: TastyAPISession):
-        """ Route a Dry Run order. Update the order instance with new data from the response. """
-
-        order_received = await self._send_order(session, is_dry_run=True)
-        order_received.received_at = datetime.now(tz=timezone.utc)  # Not available in dry-run, adding manually here
-
-        await self.update_fields(order_received)
-
-        # TODO: Check status here?
-        # status = response.get('status')
-
-        return self
-
-    async def route(self, session: TastyAPISession):
-        """ Route a Dry Run order. Update the order instance with new data from the response. """
-
-        order_received = await self._send_order(session, is_dry_run=False)
-
-        await self.update_fields(order_received)
-
-        # TODO: Check status here?
-        # status = response.get('status')
-
-        return self
-
-    async def update(self, session: TastyAPISession):
-        """ Send an updated order. """
-        if not self.id:
-            LOGGER.error('Order does not have an ID and so it cannot be updated.')
-            return self
-
-        if not self.editable:
-            LOGGER.error('Order is not editable so it cannot be updated.')
-            return self
-
-        await self.route(session)
-
-        return self
-
-    async def _send_order(self, session: TastyAPISession, is_dry_run: bool = True):
         if not await self.is_executable():
             LOGGER.error('Order is not executable (fields may be missing or incorrect). Order was not routed.')
-            return self
+            return False
 
         order_json = await self.to_order_json()
 
-        if self.id:
-            response = await api.route_order(session.session_token, self.account_number, order_json=order_json,
-                                             is_dry_run=is_dry_run, order_id=self.id)
-        else:
-            response = await api.route_order(session.session_token, self.account_number, order_json=order_json,
-                                             is_dry_run=is_dry_run)
+        response = await api.route_order(session.session_token, self.account_number, order_json=order_json,
+                                         is_dry_run=is_dry_run, order_id=self.id)
+
+        # TODO: Check status here?
+        # status = response.get('status')
 
         order_received = await Order.parse_from_api(api.get_deep_value(response, ['content', 'data']))
         order_received.is_dry_run = is_dry_run
 
-        return order_received
+        if is_dry_run:
+            order_received.received_at = datetime.now(tz=timezone.utc)  # Not available in dry-run, adding manually here
+
+        # Updating with new data
+        await self.update_fields(order_received)
+
+        # Check if order has been received by syncing with the live orders
+        await asyncio.sleep(0.5)
+        await self.live_sync(session)
+
+        return True
+
+    async def update(self, session: TastyAPISession):
+        """ Send an updated order. """
+        if not isinstance(self.id, int):
+            LOGGER.error('Order does not have an ID or ID is incorrect and so order cannot be updated '
+                         '(must be a dry-run).')
+            return False
+
+        if not self.editable:
+            LOGGER.error('Order is not editable so it cannot be updated.')
+            return False
+
+        is_success = await self.route(session, is_dry_run=False)
+
+        # TODO: Check if the order "updated_at" has changed or is set to confirm
+
+        return is_success
 
     async def cancel(self, session: TastyAPISession) -> bool:
         """ Cancel a cancellable order. """
@@ -331,9 +310,9 @@ class Order(object):
             LOGGER.warning('Order does not have an ID and so it cannot be cancelled (must be a dry-run).')
             return False
 
-        updated = await self.live_sync(session)
+        is_updated = await self.live_sync(session)
 
-        if not updated:
+        if not is_updated:
             return False
 
         if not self.cancellable:
@@ -344,10 +323,12 @@ class Order(object):
         response = await api.cancel_order(session.session_token, self.account_number, order_id=self.id)
 
         # Get the new order data and update the fields of our order instance
-        order = await Order.parse_from_api(api.get_deep_value(response, ['content', 'data']))
+        order_received = await Order.parse_from_api(api.get_deep_value(response, ['content', 'data']))
+        await self.update_fields(order_received)
 
-        # Update the modified fields after cancelling the order
-        await self.update_fields(order)
+        # Check if order has been received by syncing with the live orders
+        await asyncio.sleep(0.5)
+        await self.live_sync(session)
 
         return self.status == OrderStatus.CANCELLED
 
@@ -363,6 +344,9 @@ class Order(object):
 
     async def live_sync(self, session: TastyAPISession):
         """ Update self order instance with the data from a live orders if found by matching IDs. """
+        if not self.id:
+            LOGGER.error('Order has no ID and so it cannot be synced with live orders.')
+            return False
 
         response = await api.get_orders_live(session.session_token, self.account_number)
         items = api.get_deep_value(response, ['content', 'data', 'items'])
@@ -370,28 +354,33 @@ class Order(object):
         match = [order for order in items if order.get('id') == self.id]
 
         if len(match) == 0:
-            LOGGER.error(f'Order ID# {str(self.id)} was not found in the list of live orders. '
-                         f'It may not be live. The order cannot be updated.')
+            LOGGER.error(f'Order ID was not found in the list of live orders. It may not be live or is a dry-run. '
+                         f'The order cannot be synced with live orders.')
             return False
         elif len(match) > 1:
-            LOGGER.error('Something went wrong. Found multiple matching orders.')
+            LOGGER.error('Something went wrong. Found multiple matching orders. Should be only one.')
             return False
 
-        # Updating the existing order fields is they are different and not None
+        # Updating the existing order fields
         order = await Order.parse_from_api(match[0])
         await self.update_fields(order)
+
+        # Hack to remove the contingent value once an order is live (pending better update_fields() method)
+        if self.status == OrderStatus.LIVE:
+            self.contingent_status = ''
 
         return True
 
     async def update_fields(self, newer_order):
         """ Updating the fields is they are different and not None in the newer order. """
+        # TODO: This may need a smarter way to get it done to process fields better? (some set to None we may want)
         for k, v in vars(newer_order).items():
-            if v != getattr(self, k) and v is not None:  # TODO: Does this update the legs if different once filled?
+            if v != getattr(self, k) and v is not None:
                 setattr(self, k, v)
 
         return self
 
     async def total_fees(self) -> Decimal:
-        # TODO: Need to Test
-        fees = self.fees.get('total-fees')*OrderPriceEffectSign[self.fees.get('total-fees-effect')].value
+        """ Return the total of the fees with the sign in a Decimal. """
+        fees = Decimal(self.fees.get('total-fees'))*OrderPriceEffectSign[self.fees.get('total-fees-effect')].value
         return fees

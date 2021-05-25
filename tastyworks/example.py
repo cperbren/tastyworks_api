@@ -5,22 +5,19 @@ from os import environ
 from datetime import date, timedelta
 from decimal import Decimal
 
+from tastyworks.models.session import TastyAPISession
+from tastyworks.streamer import DataStreamer
+from tastyworks.models.account import Account
+from tastyworks.models.order import Leg, Order, OrderType, TimeInForce, InstrumentType, OrderAction, OrderPriceEffect
 from tastyworks.models import option_chain, underlying
 from tastyworks.models.option import Option, OptionType
-from tastyworks.models.order import Leg, Order, OrderType, TimeInForce, InstrumentType, OrderAction, OrderPriceEffect
-from tastyworks.models.session import TastyAPISession
-from tastyworks.models.account import Account
 from tastyworks.models.underlying import UnderlyingType
-from tastyworks.streamer import DataStreamer
-from tastyworks.tastyworks_api import tasty_session
 
 LOGGER = logging.getLogger(__name__)
 
 
 async def main_loop(session: TastyAPISession, streamer: DataStreamer):
-    """
-        Example usage of classes and methods
-    """
+    """ Example usage of classes and methods. """
 
     """
     #################
@@ -66,7 +63,7 @@ async def main_loop(session: TastyAPISession, streamer: DataStreamer):
 
     # Get all the live orders (today's orders)
     orders_live = await acct.get_orders_live(session)
-    LOGGER.info(f'Number of active orders: {len(orders_live)}')
+    LOGGER.info(f'Number of orders active or executed/cancelled today: {len(orders_live)}')
 
     # Get past transactions (default last 2000 transactions) - See details for sorting and pagination
     transactions = await acct.get_transactions(session)
@@ -129,32 +126,40 @@ async def main_loop(session: TastyAPISession, streamer: DataStreamer):
     )
     await order.add_leg(leg)
 
-    # Route a dry-run order
-    await order.dry_run(session)
-    LOGGER.info(f'Order dry-run done.')
+    # Route a dry-run order (order instance is updated with new response), check the fees.
+    is_success = await order.route(session, is_dry_run=True)
+    fees = await order.total_fees()
+    LOGGER.info(f'Order dry-run {"successful" if is_success else "failed"}. Fees are: {fees}.')
 
     # Check for errors and warnings
     LOGGER.info(f'Dry-Run order has {len(order.errors) if order.errors else 0} error(s) and '
                 f'{len(order.warnings) if order.warnings else 0} warning(s).')
 
-    # Try to cancel a dry-run order (should return some error in the log)
+    # Try to update and cancel a dry-run order (should return some error message in the log because no ID)
+    await order.update(session)
     await order.cancel(session)
 
-    # Route a real order and return a new Order
-    await order.route(session)
-    LOGGER.info(f'Order #{order.id} routed')
-    LOGGER.info(f'Routed order has {len(order.errors) if order.errors else 0} error(s) and '
+    # Route a real order (order instance is updated with new response)
+    is_success = await order.route(session, is_dry_run=False)
+    fees = await order.total_fees()
+    LOGGER.info(f'Order #{order.id} {"not " if not is_success else ""}routed. Fees are: {fees}.')
+    LOGGER.info(f'Order has {len(order.errors) if order.errors else 0} error(s) and '
                 f'{len(order.warnings) if order.warnings else 0} warning(s).')
 
-    # Modifying an order
+    # Modifying a live order (order instance is updated with new response) - Note: Cannot update a dry-run (no ID)
     order.price = Decimal(101.50)
-    await order.update(session)
-    LOGGER.info(f'Order #{order.id} modified')
+    order.time_in_force = TimeInForce.GTD
+    is_success = await order.update(session)
+    LOGGER.info(f'Order #{order.id} was {"not " if not is_success else ""}modified.')
 
-    # Cancel the order and update its values
-    await order.cancel(session)
-    LOGGER.info(f'Order #{order.id}: {order.status.value} '
-                f'at {order.cancelled_at.strftime("%m/%d/%Y %H:%M:%S-%f")}')
+    # Cancel the order and update its values (order instance is updated with new response data)
+    is_success = await order.cancel(session)
+    if is_success:
+        LOGGER.info(f'Order #{order.id}: {order.status.value} '
+                    f'at {order.cancelled_at.strftime("%m/%d/%Y %H:%M:%S-%f")}')
+
+    await order.live_sync(session)
+    LOGGER.info(f'Order')
 
     """
     ################
@@ -180,34 +185,11 @@ async def main_loop(session: TastyAPISession, streamer: DataStreamer):
 
     # TODO
 
-    #
-    # # Execute an order
-    #
-    # details = OrderDetails(
-    #     type=OrderType.LIMIT,
-    #     price=Decimal(400),
-    #     price_effect=OrderPriceEffect.CREDIT)
-    # new_order = Order(details)
-    #
-    # opt = Option(
-    #     ticker='SPY',
-    #     quantity=1,
-    #     expiry=get_third_friday(date.today()),
-    #     strike=Decimal(400),
-    #     option_type=OptionType.CALL,
-    #     underlying_type=UnderlyingType.EQUITY
-    # )
-    # new_order.add_leg(opt)
-    #
-    # res = await acct.execute_order(new_order, session, dry_run=True)
-    # LOGGER.info('Order executed successfully: %s', res)
-    #
-    # # Get an options chain
-    # undl = underlying.Underlying('SPY')
-    #
-    # chain = await option_chain.get_option_chain(session, undl)
-    # LOGGER.info('Chain strikes: %s', chain.get_all_strikes())
-
+    """
+    ############
+    # STREAMER #
+    ############
+    """
     sub_values = {
         'Quote': ['SPY']
     }
@@ -240,6 +222,7 @@ async def main():
 
     # LOGGER.info('Streamer token: %s' % streamer.get_streamer_token())
     try:
+        # await main_loop(tw_session, streamer)
         await main_loop(tw_session, streamer)
     finally:
         # This is not working

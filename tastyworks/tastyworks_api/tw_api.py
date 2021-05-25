@@ -145,7 +145,7 @@ async def api_request(request_type: str, url: str, token: str = None, json_data:
     Returns:
         The server response
     """
-    LOGGER.debug(f'########## Running: {inspect.stack()[1].function}')
+    LOGGER.debug(f'########## API Request: {inspect.stack()[1].function}')
 
     if token is not None:
         header = {'Authorization': token}

@@ -1,5 +1,6 @@
 import datetime
 import logging
+from os import environ
 
 import tastyworks.tastyworks_api.tw_api as api
 
@@ -14,6 +15,12 @@ class TastyAPISession(object):
 
     @classmethod
     async def start(cls, username: str = None, password: str = None):
+        if not username:
+            username = environ.get('TW_USER', "")
+
+        if not password:
+            password = environ.get('TW_PASSWORD', "")
+
         self = TastyAPISession()
 
         resp = await api.session_start(username, password)
