@@ -7,7 +7,7 @@ from decimal import Decimal
 
 from tastyworks.models import option_chain, underlying
 from tastyworks.models.option import Option, OptionType
-from tastyworks.models.order import (Order, OrderDetails, OrderPriceEffect,OrderType)
+from tastyworks.models.order import Leg, Order, OrderType, TimeInForce, InstrumentType, OrderAction, OrderPriceEffect
 from tastyworks.models.session import TastyAPISession
 from tastyworks.models.account import Account
 from tastyworks.models.underlying import UnderlyingType
@@ -111,8 +111,50 @@ async def main_loop(session: TastyAPISession, streamer: DataStreamer):
     # ROUTING ORDERS #
     ##################
     """
+    # Creating the leg(s) first
+    leg = Leg(
+        action=OrderAction.BTO,
+        instrument_type=InstrumentType.EQUITY,
+        quantity=Decimal(1),
+        symbol='SPY'
+    )
 
-    # TODO
+    # Creating the order and adding the leg(s)
+    order = Order(
+        account_number=acct.account_number,
+        type=OrderType.LIMIT,
+        price=Decimal(100),
+        price_effect=OrderPriceEffect.DEBIT,
+        time_in_force=TimeInForce.DAY,
+    )
+    await order.add_leg(leg)
+
+    # Route a dry-run order
+    await order.dry_run(session)
+    LOGGER.info(f'Order dry-run done.')
+
+    # Check for errors and warnings
+    LOGGER.info(f'Dry-Run order has {len(order.errors) if order.errors else 0} error(s) and '
+                f'{len(order.warnings) if order.warnings else 0} warning(s).')
+
+    # Try to cancel a dry-run order (should return some error in the log)
+    await order.cancel(session)
+
+    # Route a real order and return a new Order
+    await order.route(session)
+    LOGGER.info(f'Order #{order.id} routed')
+    LOGGER.info(f'Routed order has {len(order.errors) if order.errors else 0} error(s) and '
+                f'{len(order.warnings) if order.warnings else 0} warning(s).')
+
+    # Modifying an order
+    order.price = Decimal(101.50)
+    await order.update(session)
+    LOGGER.info(f'Order #{order.id} modified')
+
+    # Cancel the order and update its values
+    await order.cancel(session)
+    LOGGER.info(f'Order #{order.id}: {order.status.value} '
+                f'at {order.cancelled_at.strftime("%m/%d/%Y %H:%M:%S-%f")}')
 
     """
     ################
@@ -137,9 +179,6 @@ async def main_loop(session: TastyAPISession, streamer: DataStreamer):
     """
 
     # TODO
-
-
-
 
     #
     # # Execute an order

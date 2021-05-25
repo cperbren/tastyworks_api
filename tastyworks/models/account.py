@@ -4,8 +4,10 @@ from datetime import date
 from dataclasses import dataclass
 import tastyworks.tastyworks_api.tw_api as api
 
+from tastyworks.models.session import TastyAPISession
 from tastyworks.models.transaction import Transaction
-from tastyworks.models.order import Order, OrderPriceEffect
+from tastyworks.models.position import Position
+from tastyworks.models.order import Order
 
 
 @dataclass
@@ -22,7 +24,7 @@ class Account(object):
     transactions: list = None
 
     @classmethod
-    async def get_accounts(cls, session) -> List:
+    async def get_accounts(cls, session: TastyAPISession) -> List:
         """
         Gets all trading accounts from the Tastyworks platform from an active session.
 
@@ -41,42 +43,13 @@ class Account(object):
             # if entry.get('authority-level') != 'owner':
             #     continue
             acct_data = entry.get('account')
-            acct = Account._parse_from_api(acct_data)
+            acct = await Account._parse_from_api(acct_data)
             res.append(acct)
 
         return res
 
-    async def execute_order(self, order: Order, session, dry_run=True):
-        """
-        Execute an order. If doing a dry run, the order isn't placed but simulated (server-side).
-
-        Args:
-            order (Order): The order object to execute.
-            session (TastyAPISession): The tastyworks session onto which to execute the order.
-            dry_run (bool): Whether to do a test (dry) run.
-
-        Returns:
-            bool: Whether the order was successful.
-        """
-        if not order.check_is_order_executable():
-            raise Exception('Order is not executable, most likely due to missing data')
-
-        if not await session.is_active():
-            raise Exception('The supplied session is not active and valid')
-
-        body = _get_execute_order_json(order)
-
-        resp = await api.route_order(session.session_token, self.account_number, order_json=body, is_dry_run=dry_run)
-
-        if resp.get('status') == 201:
-            return True
-        elif resp.get('status') == 400:
-            raise Exception(f'Order execution failed, message: {resp.get("reason")}')
-        else:
-            raise Exception(f'Unknown remote error, status code: {resp.get("reason")}, message: {resp.get("reason")}')
-
     @classmethod
-    def _parse_from_api(cls, data: dict):
+    async def _parse_from_api(cls, data: dict):
         """
         Parses a TradingAccount object from an API dict response.
         """
@@ -89,7 +62,7 @@ class Account(object):
 
         return res
 
-    async def get_everything(self, session):
+    async def get_everything(self, session: TastyAPISession):
         """
         Get all the account information at once using default counts for orders (200) & transactions (2000).
         """
@@ -104,7 +77,7 @@ class Account(object):
 
         return True
 
-    async def get_balances(self, session):
+    async def get_balances(self, session: TastyAPISession):
         """
         Get account balances.
 
@@ -119,7 +92,7 @@ class Account(object):
 
         return self.balances
 
-    async def get_status(self, session):
+    async def get_status(self, session: TastyAPISession):
         """
         Get the status of the account
         """
@@ -129,7 +102,7 @@ class Account(object):
 
         return self.status
 
-    async def get_capital_req(self, session):
+    async def get_capital_req(self, session: TastyAPISession):
         """
         Get the capital requirement of the account
         """
@@ -139,7 +112,7 @@ class Account(object):
 
         return self.capital_req
 
-    async def get_underlyings(self, session):
+    async def get_underlyings(self, session: TastyAPISession):
         """
         Get the active underlyings of an account
         """
@@ -150,18 +123,22 @@ class Account(object):
 
         return self.underlyings
 
-    async def get_positions(self, session):
+    async def get_positions(self, session: TastyAPISession):
         """
         Get Open Positions.
         """
         response = await api.get_positions(session.session_token, self.account_number)
 
-        self.positions = api.get_deep_value(response, ['content', 'data', 'items'])
-        # TODO: Use a "Position" class
+        items = api.get_deep_value(response, ['content', 'data', 'items'])
+
+        self.positions = []
+        for entry in items:
+            position = await Position.parse_from_api(entry)
+            self.positions.append(position)
 
         return self.positions
 
-    async def get_orders(self, session, symbol: str = '',
+    async def get_orders(self, session: TastyAPISession, symbol: str = '',
                          start_date: date = None, end_date: date = None,
                          per_page: int = 200, page_number: int = 1):
         """
@@ -178,26 +155,36 @@ class Account(object):
             A list of orders matching the sorting criteria. Not assigning to the class instance
             to prevent overwriting of user data
         """
-        response = await api.get_orders(session.session_token, self.account_number, symbol=symbol,
+        response = await api.get_orders(session.session_token, self.account_number,
+                                        symbol=symbol,
                                         start_date=start_date, end_date=end_date,
                                         per_page=per_page, page_number=page_number)
-        # TODO: Use the Order class
-        orders = api.get_deep_value(response, ['content', 'data', 'items'])
+
+        items = api.get_deep_value(response, ['content', 'data', 'items'])
+
+        orders = []
+        for entry in items:
+            order = await Order.parse_from_api(entry)
+            orders.append(order)
 
         return orders
 
-    async def get_orders_live(self, session):
+    async def get_orders_live(self, session: TastyAPISession):
         """
         Get live open orders.
         """
         response = await api.get_orders_live(session.session_token, self.account_number)
 
-        self.orders_live = api.get_deep_value(response, ['content', 'data', 'items'])
-        # TODO: Use the Order class
+        items = api.get_deep_value(response, ['content', 'data', 'items'])
+
+        self.orders_live = []
+        for entry in items:
+            order = await Order.parse_from_api(entry)
+            self.orders_live.append(order)
 
         return self.orders_live
 
-    async def get_transactions(self, session, symbol: str = '',
+    async def get_transactions(self, session: TastyAPISession, symbol: str = '',
                                start_date: date = None, end_date: date = None,
                                per_page: int = 2000, page_number: int = 1) -> List:
         """
@@ -216,30 +203,31 @@ class Account(object):
 
         return transactions
 
-
-# TODO: MOVE THIS SOMEWHERE ELSE BETTER ?
-def _get_execute_order_json(order: Order):
-    order_json = {
-        'source': order.details.source,
-        'order-type': order.details.type.value,
-        'price': '{:.2f}'.format(order.details.price),
-        'price-effect': order.details.price_effect.value,
-        'time-in-force': order.details.time_in_force.value,
-        'legs': _get_legs_request_data(order)
-    }
-
-    if order.details.gtc_date:
-        order_json['gtc-date'] = order.details.gtc_date.strftime('%Y-%m-%d')
-
-    return order_json
-
-
-# TODO: MOVE THIS SOMEWHERE ELSE BETTER ?
-def _get_legs_request_data(order):
-    res = []
-    order_effect = order.details.price_effect
-    order_effect_str = 'Sell to Open' if order_effect == OrderPriceEffect.CREDIT else 'Buy to Open'
-    for leg in order.details.legs:
-        leg_dict = {**leg.to_tasty_json(), 'action': order_effect_str}
-        res.append(leg_dict)
-    return res
+    # async def execute_order(self, order: Order, session, dry_run=True):
+    #     """
+    #     Execute an order. If doing a dry run, the order isn't placed but simulated (server-side).
+    #
+    #     Args:
+    #         order (Order): The order object to execute.
+    #         session (TastyAPISession): The tastyworks session onto which to execute the order.
+    #         dry_run (bool): Whether to do a test (dry) run.
+    #
+    #     Returns:
+    #         bool: Whether the order was successful.
+    #     """
+    #     if not order.check_is_order_executable():
+    #         raise Exception('Order is not executable, most likely due to missing data')
+    #
+    #     if not await session.is_active():
+    #         raise Exception('The supplied session is not active and valid')
+    #
+    #     body = _get_execute_order_json(order)
+    #
+    #     resp = await api.route_order(session.session_token, self.account_number, order_json=body, is_dry_run=dry_run)
+    #
+    #     if resp.get('status') == 201:
+    #         return True
+    #     elif resp.get('status') == 400:
+    #         raise Exception(f'Order execution failed, message: {resp.get("reason")}')
+    #     else:
+    #         raise Exception(f'Unknown remote error, status code: {resp.get("reason")}, message: {resp.get("reason")}')
