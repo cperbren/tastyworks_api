@@ -131,7 +131,7 @@ async def main():
         ],
     }
     resp = await api.add_journal_entry(session_token, entry_json=new_entry)
-    entry_id = resp.get('content').get('data').get('id')
+    entry_id = int(resp.get('content').get('data').get('id'))
     print(resp)
 
     # Update a journal entry with no order linked
@@ -183,7 +183,7 @@ async def main():
     }
     resp = await api.add_journal_entry(session_token, entry_json=new_entry)
     entry = resp.get('content').get('data')
-    entry_id = entry.get('id')
+    entry_id = int(entry.get('id'))
     print(resp)
 
     # Get the first page of journal entries (will fetch first 10 on the first page)
@@ -337,9 +337,9 @@ async def main():
     # May be rejected depending on your account
     resp = await api.route_order(session_token, environ.get('TW_ACCOUNT', ""), order_json, is_dry_run=False)
     print(resp)
-    order_id = ''
+    order_id = None
     if resp.get('ok'):
-        order_id = str(resp.get('content').get('data').get('order').get('id'))
+        order_id = int(resp.get('content').get('data').get('order').get('id'))
 
     # Getting the live orders to check if the order was accepted and is working (not rejected)
     # This would probably already be in the Order objet when using classes as part of order confirmation methods
@@ -351,7 +351,7 @@ async def main():
     is_editable = False  # Setting false by default
     status = ''  # Setting as empty by default so that only confirmed Live order are acted upon
     for order in orders:
-        if str(order.get('id')) == order_id:
+        if order.get('id') == order_id:
             exist = True
             status = order.get('status')
             is_editable = order.get('editable')
@@ -368,7 +368,7 @@ async def main():
         }
         resp = await api.route_order(session_token, environ.get('TW_ACCOUNT', ""),
                                      order_json=edited_order_json, is_dry_run=False, order_id=order_id)
-        order_id = str(resp.get('content').get('data').get('id'))
+        order_id = int(resp.get('content').get('data').get('id'))
         print(resp)  # Note: The response is different when modifying, only getting the order
 
     # Need to get the new list of live orders again to check if the modified order was accepted and is live
@@ -379,7 +379,7 @@ async def main():
     is_cancellable = False
     status = ''
     for order in orders:
-        if str(order.get('id')) == order_id:
+        if order.get('id') == order_id:
             exist = True
             status = order.get('status')
             is_cancellable = order.get('cancellable')

@@ -5,6 +5,13 @@ from os import environ
 from datetime import date
 from urllib.parse import quote
 from typing import Dict
+from dataclasses import dataclass
+
+
+@dataclass
+class APIError(object):
+    """ Placeholder """
+    pass
 
 
 async def is_error(resp, valid_list: list = None, error_list: list = None):
@@ -95,8 +102,8 @@ def make_api_url(key: str, **kwargs):
 
         'ORDERS_LIVE': f'/accounts/{account}/orders/live',
 
-        'ORDER_DRY_RUN': f'/accounts/{account}/orders{"/"+order_id if order_id else ""}/dry-run',
-        'ORDER_EXECUTE': f'/accounts/{account}/orders{"/"+order_id if order_id else ""}',
+        'ORDER_DRY_RUN': f'/accounts/{account}/orders{"/"+str(order_id) if order_id else ""}/dry-run',
+        'ORDER_EXECUTE': f'/accounts/{account}/orders{"/"+str(order_id) if order_id else ""}',
         'FIFTY_POP': '/fifty-percent-pop',
 
         'SYMBOL_SEARCH': f'/symbols/search/{quote(symbol if symbol else "", safe="")}',
@@ -104,13 +111,13 @@ def make_api_url(key: str, **kwargs):
         'OPTION_CHAINS': f'/option-chains/{symbol}/nested',
         'FUTURE_OPTION_CHAINS': f'/futures-option-chains/{(symbol if symbol else "").strip("/")}/nested',
 
-        'QUOTE_ALERTS': f'/quote-alerts{"/"+alert_id if alert_id else ""}',
+        'QUOTE_ALERTS': f'/quote-alerts{"/"+str(alert_id) if alert_id else ""}',
 
         'WATCHLISTS': f'/watchlists{"/"+watchlist_name if watchlist_name else ""}',
         'WATCHLISTS_PUBLIC': '/public-watchlists',
 
         'JOURNAL': f'/journal-entries'
-                   f'{"/"+entry_id if entry_id else ""}'  # Used for modifying or deleting an entry
+                   f'{"/"+str(entry_id) if entry_id else ""}'  # Used for modifying or deleting an entry
                    f'{"?page-offset="+journal_page_offset if journal_page_offset else ""}'
                    f'{"&" if journal_page_offset else "?"}'
                    f'{"tag="+tag if tag else ""}',  # Used to search for an entry by tag
@@ -374,7 +381,7 @@ async def get_orders_live(token: str, account_number: str) -> Dict:
 
 
 async def route_order(token: str, account_number: str, order_json: dict,
-                      is_dry_run: bool = True, order_id: str = None) -> Dict:
+                      is_dry_run: bool = True, order_id: int = None) -> Dict:
     """
     Place a dry-run (preview), route a live order or allow to modify an order by passing the additional "order_id".
 
@@ -383,8 +390,7 @@ async def route_order(token: str, account_number: str, order_json: dict,
         account_number (str): Account number to check
         order_json (dict): The order payload containing the expected order information
         is_dry_run (bool): True for a order review (dry-run) and False to route the order
-        order_id (str): An order 'id' read from an open orders list received via get_orders() or get_orders_live().
-                        It is an optional input parameter to place a new order.
+        order_id (int): An order 'id' read from an open orders list received via get_orders() or get_orders_live().
                         This is required to modify an order for dry run or order routing.
 
     Returns:
@@ -403,13 +409,13 @@ async def route_order(token: str, account_number: str, order_json: dict,
     return resp
 
 
-async def cancel_order(token: str, account_number: str, order_id: str = None) -> Dict:
+async def cancel_order(token: str, account_number: str, order_id: int = None) -> Dict:
     """
     Cancels an open order defined by "order_id"
     Args:
         token (str): A valid session token
         account_number (str): Account number to use
-        order_id (str): An order 'id' read from an open orders list received via get_orders() or get_orders_live().
+        order_id (int): An order 'id' read from an open orders list received via get_orders() or get_orders_live().
                         It is an optional input parameter to place a new order.
                         This is required to modify an order for dry run or order routing.
 
@@ -619,7 +625,7 @@ async def add_journal_entry(token: str, entry_json: dict) -> Dict:
     return resp
 
 
-async def update_journal_entry(token: str, entry_json: dict, entry_id: str = None) -> Dict:
+async def update_journal_entry(token: str, entry_json: dict, entry_id: int = None) -> Dict:
     """
     Passing the entry_id will allow to update/override the entry via a PUT request
     Entire JSON content for the new entry needs to be sent as if creating a new entry
@@ -630,7 +636,7 @@ async def update_journal_entry(token: str, entry_json: dict, entry_id: str = Non
     return resp
 
 
-async def delete_journal_entry(token: str, entry_id: str = None) -> Dict:
+async def delete_journal_entry(token: str, entry_id: int = None) -> Dict:
     """
     Delete a journal entry by its ID
     Will only return that the change has been accepted (no response from the API)
