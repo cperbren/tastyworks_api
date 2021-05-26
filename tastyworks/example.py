@@ -5,13 +5,10 @@ from os import environ
 from datetime import date, timedelta
 from decimal import Decimal
 
-from tastyworks.models.session import TastyAPISession
+from tastyworks.tastyworks_api.session import TastyAPISession
 from tastyworks.streamer import DataStreamer
 from tastyworks.models.account import Account
 from tastyworks.models.order import Leg, Order, OrderType, TimeInForce, InstrumentType, OrderAction, OrderPriceEffect
-from tastyworks.models import option_chain, underlying
-from tastyworks.models.option import Option, OptionType
-from tastyworks.models.underlying import UnderlyingType
 
 LOGGER = logging.getLogger(__name__)
 
@@ -48,6 +45,7 @@ async def main_loop(session: TastyAPISession, streamer: DataStreamer):
                 f'Margin requirement: ${capital.get("margin-requirement")}\n'
                 f'Option buying power: ${capital.get("reg-t-option-buying-power")}')
 
+    # Get the underlyings present for open position in an account
     underlyings = await acct.get_underlyings(session)
     LOGGER.info(f'Account holding details: \n'
                 f'Underlyings list: {[underlyings[n].get("code") for n in range(len(underlyings))]}\n'
@@ -61,33 +59,32 @@ async def main_loop(session: TastyAPISession, streamer: DataStreamer):
     orders = await acct.get_orders(session)
     LOGGER.info(f'Number of past orders retrieved: {len(orders)}')
 
-    # Get all the live orders (today's orders)
+    # Get all the "live" orders (today's orders active, routed, cancelled)
     orders_live = await acct.get_orders_live(session)
-    LOGGER.info(f'Number of orders active or executed/cancelled today: {len(orders_live)}')
-
-    # Get past transactions (default last 2000 transactions) - See details for sorting and pagination
-    transactions = await acct.get_transactions(session)
-    LOGGER.info(f'Number of past transactions: {len(transactions)}')
+    LOGGER.info(f'Number of orders active/executed/cancelled today: {len(orders_live)}')
 
     # Get all the accounts information at once [includes 200 orders & 2000 transactions]
     await acct.get_everything(session)
     LOGGER.info(f'Number of past transactions: {len(acct.transactions)}')
 
     """
-    ##############
-    # WATCHLISTS #
-    ##############
+    ################
+    # TRANSACTIONS #
+    ################
     """
 
-    # TODO: Update the Watchlist class
+    # Get past transactions (default last 2,000 transactions)
+    acct.transactions = await acct.get_transactions(session)
+    LOGGER.info(f'Number of past transactions: {len(acct.transactions)}')
 
-    """
-    ###########
-    # JOURNAL #
-    ###########
-    """
-
-    # TODO: Need to create a Journal (maybe) and/or JournalEntry classes
+    # Another example: fetching transactions with extra filters and pagination
+    symbol = 'SPY'
+    days = 90
+    start_date = date.today() - timedelta(days=days)  # last 90 days
+    end_date = date.today()
+    acct.transactions = await acct.get_transactions(session, symbol=symbol, start_date=start_date, end_date=end_date,
+                                                    per_page=10, page_number=1)
+    LOGGER.info(f'Number of past {symbol} transactions for the last {days} days: {len(acct.transactions)}')
 
     """
     ##################
@@ -95,7 +92,7 @@ async def main_loop(session: TastyAPISession, streamer: DataStreamer):
     ##################
     """
 
-    # Similar to the account section, here you can fetch orders with extra filters
+    # Similar to the transactions, another example: fetching orders with extra filters and pagination
     symbol = 'SPY'
     start_date = date.today() - timedelta(days=90)  # last 90 days
     end_date = date.today()
@@ -108,6 +105,7 @@ async def main_loop(session: TastyAPISession, streamer: DataStreamer):
     # ROUTING ORDERS #
     ##################
     """
+
     # Creating the leg(s) first
     leg = Leg(
         action=OrderAction.BTO,
@@ -163,19 +161,27 @@ async def main_loop(session: TastyAPISession, streamer: DataStreamer):
 
     """
     ################
-    # TRANSACTIONS #
-    ################
-    """
-
-    # TODO
-
-    """
-    ################
     # TRADING DATA #
     ################
     """
 
     # TODO
+
+    """
+    ##############
+    # WATCHLISTS #
+    ##############
+    """
+
+    # TODO: Update the Watchlist class
+
+    """
+    ###########
+    # JOURNAL #
+    ###########
+    """
+
+    # TODO: Need to create a Journal (maybe) and/or JournalEntry classes
 
     """
     ##########
@@ -214,8 +220,9 @@ def get_third_friday(d):
 
 async def main():
 
-    # Creating a new TW API session using async and the new API abstraction layer
-    tw_session = await TastyAPISession.start(environ.get('TW_USER', ""), environ.get('TW_PASSWORD', ""))
+    # Creating a new blank TW API session and start it using environment variables
+    tw_session = TastyAPISession()
+    await tw_session.start(environ.get('TW_USER', ""), environ.get('TW_PASSWORD', ""))
 
     # Creating a new Data Streamer connection
     streamer = await DataStreamer.start(tw_session)

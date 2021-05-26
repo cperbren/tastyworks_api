@@ -7,7 +7,7 @@ from typing import List
 from dataclasses import dataclass, field
 
 import tastyworks.tastyworks_api.tw_api as api
-from tastyworks.models.session import TastyAPISession
+from tastyworks.tastyworks_api.session import TastyAPISession
 from tastyworks.tastyworks_api.messages import OrderError, OrderWarning
 
 LOGGER = logging.getLogger(__name__)

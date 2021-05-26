@@ -1,5 +1,5 @@
 import aiohttp
-from tastyworks.models.session import TastyAPISession
+from tastyworks.tastyworks_api.session import TastyAPISession
 
 
 async def symbol_search(symbol: str, session: TastyAPISession):

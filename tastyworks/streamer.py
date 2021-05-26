@@ -6,7 +6,7 @@ from aiocometd import ConnectionType
 
 from tastyworks import dxfeed
 from tastyworks.dxfeed import mapper as dxfeed_mapper
-from tastyworks.models.session import TastyAPISession
+from tastyworks.tastyworks_api.session import TastyAPISession
 
 import tastyworks.tastyworks_api.tw_api as api
 

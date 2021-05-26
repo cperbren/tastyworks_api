@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import aiohttp
 import inspect
@@ -154,23 +155,27 @@ async def api_request(request_type: str, url: str, token: str = None, json_data:
 
     async with aiohttp.request(request_type, url, headers=header, json=json_data) as resp:
         await is_error(resp)
-        if resp:
-            api_response = {
-                'content': 'OK' if (resp.status in [202, 204]) else await resp.json(),  # 202/204 not returning any data
-                'status': {
-                    'ok': resp.ok,
-                    'code': resp.status,
-                    'reason': resp.reason,
-                    'url': str(resp.url),
-                    'method': resp.method,
-                    'content_length': resp.content_length,
-                    'content_type': resp.content_type,
-                    'host': resp.host,
-                    'request_info': resp.request_info
-                }
+        api_response = {
+            'status': {
+                'ok': resp.ok,
+                'code': resp.status,
+                'reason': resp.reason,
+                'url': str(resp.url),
+                'method': resp.method,
+                'content_length': resp.content_length,
+                'content_type': resp.content_type,
+                'host': resp.host,
+                'request_info': resp.request_info
             }
+        }
+        if resp.status in [202, 204]:
+            api_response['content'] = 'OK'
         else:
-            api_response = {}
+            try:
+                api_response['content'] = await resp.json()  # 202/204 not returning any data
+            except:
+                LOGGER.error('Could not read data from API response.')
+                api_response['content'] = None
 
     return api_response
 

@@ -4,7 +4,7 @@ from datetime import date
 from dataclasses import dataclass
 import tastyworks.tastyworks_api.tw_api as api
 
-from tastyworks.models.session import TastyAPISession
+from tastyworks.tastyworks_api.session import TastyAPISession
 from tastyworks.models.transaction import Transaction
 from tastyworks.models.position import Position
 from tastyworks.models.order import Order
@@ -34,11 +34,11 @@ class Account(object):
         Returns:
             list (TradingAccount): A list of trading accounts.
         """
-        res = []
         response = await api.get_accounts(session.session_token)
 
         data = api.get_deep_value(response, ['content', 'data', 'items'])
 
+        res = []
         for entry in data:
             # if entry.get('authority-level') != 'owner':
             #     continue
@@ -72,7 +72,7 @@ class Account(object):
         await self.get_underlyings(session)
         await self.get_positions(session)
         self.orders = await self.get_orders(session)
-        self.orders_live = await self.get_orders_live(session)
+        await self.get_orders_live(session)
         self.transactions = await self.get_transactions(session)
 
         return True
@@ -153,7 +153,7 @@ class Account(object):
             page_number
         Returns:
             A list of orders matching the sorting criteria. Not assigning to the class instance
-            to prevent overwriting of user data
+            to prevent overwriting of user data.
         """
         response = await api.get_orders(session.session_token, self.account_number,
                                         symbol=symbol,
@@ -188,7 +188,7 @@ class Account(object):
                                start_date: date = None, end_date: date = None,
                                per_page: int = 2000, page_number: int = 1) -> List:
         """
-        Get past transactions. Not assigning to the class instance to prevent overwriting of user data
+        Get past transactions. Not assigning to the class instance to prevent overwriting of user data.
         """
         response = await api.get_transactions(session.session_token, self.account_number, symbol=symbol,
                                               start_date=start_date, end_date=end_date,
@@ -202,32 +202,3 @@ class Account(object):
             transactions.append(transaction)
 
         return transactions
-
-    # async def execute_order(self, order: Order, session, dry_run=True):
-    #     """
-    #     Execute an order. If doing a dry run, the order isn't placed but simulated (server-side).
-    #
-    #     Args:
-    #         order (Order): The order object to execute.
-    #         session (TastyAPISession): The tastyworks session onto which to execute the order.
-    #         dry_run (bool): Whether to do a test (dry) run.
-    #
-    #     Returns:
-    #         bool: Whether the order was successful.
-    #     """
-    #     if not order.check_is_order_executable():
-    #         raise Exception('Order is not executable, most likely due to missing data')
-    #
-    #     if not await session.is_active():
-    #         raise Exception('The supplied session is not active and valid')
-    #
-    #     body = _get_execute_order_json(order)
-    #
-    #     resp = await api.route_order(session.session_token, self.account_number, order_json=body, is_dry_run=dry_run)
-    #
-    #     if resp.get('status') == 201:
-    #         return True
-    #     elif resp.get('status') == 400:
-    #         raise Exception(f'Order execution failed, message: {resp.get("reason")}')
-    #     else:
-    #         raise Exception(f'Unknown remote error, status code: {resp.get("reason")}, message: {resp.get("reason")}')
