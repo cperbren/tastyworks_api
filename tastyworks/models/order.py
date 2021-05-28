@@ -384,3 +384,8 @@ class Order(object):
         """ Return the total of the fees with the sign in a Decimal. """
         fees = Decimal(self.fees.get('total-fees'))*OrderPriceEffectSign[self.fees.get('total-fees-effect')].value
         return fees
+
+    async def do_50_pop(self):
+        """ Run the 50% POP simulation. """
+        # TODO: Implement this if it can be useful
+        pass

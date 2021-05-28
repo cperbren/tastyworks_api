@@ -9,12 +9,31 @@ from tastyworks.tastyworks_api.session import TastyAPISession
 from tastyworks.streamer import DataStreamer
 from tastyworks.models.account import Account
 from tastyworks.models.order import Leg, Order, OrderType, TimeInForce, InstrumentType, OrderAction, OrderPriceEffect
+from tastyworks.models.underlying import Underlying, search_symbol
 
 LOGGER = logging.getLogger(__name__)
 
 
 async def main_loop(session: TastyAPISession, streamer: DataStreamer):
     """ Example usage of classes and methods. """
+
+    """
+    ################
+    # TRADING DATA #
+    ################
+    """
+
+    # Search symbols from a string, return a list of Underlyings (works for futures, micros, cryptos)
+    underlyings = await search_symbol(session, 'T')
+    LOGGER.info(f'{underlyings}')
+
+    # Fetch the market metrics for one symbol, return an Underlying instance
+    underlying = await Underlying.from_metrics(session, 'SPY')
+    LOGGER.info(f'{underlying}')
+
+    # Also works for a list of symbols, returns a list of Underlying instances
+    underlyings_list = await Underlying.from_metrics(session, ['SPY', 'BRK/B', '/MES', 'INCORRECT'])
+    LOGGER.info(f'{underlyings_list}')
 
     """
     #################
@@ -160,14 +179,6 @@ async def main_loop(session: TastyAPISession, streamer: DataStreamer):
     LOGGER.info(f'Order')
 
     """
-    ################
-    # TRADING DATA #
-    ################
-    """
-
-    # TODO
-
-    """
     ##############
     # WATCHLISTS #
     ##############
@@ -221,8 +232,7 @@ def get_third_friday(d):
 async def main():
 
     # Creating a new blank TW API session and start it using environment variables
-    tw_session = TastyAPISession()
-    await tw_session.start(environ.get('TW_USER', ""), environ.get('TW_PASSWORD', ""))
+    tw_session = await TastyAPISession.start(environ.get('TW_USER', ""), environ.get('TW_PASSWORD', ""))
 
     # Creating a new Data Streamer connection
     streamer = await DataStreamer.start(tw_session)
